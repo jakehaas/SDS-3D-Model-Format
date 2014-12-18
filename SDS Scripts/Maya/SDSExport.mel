@@ -18,8 +18,8 @@
 /////////////////////////////////////////////////////////////////////////////////////
 
 // Open dialog box to pick SDS file
-global proc SDSexportBrowser() {
-
+global proc SDSexportBrowser()
+{
 	if (!size(SDScheckMeshSelection()))
 	{
 		return;
@@ -29,9 +29,10 @@ global proc SDSexportBrowser() {
 }
 
 // Export
-global proc SDSexport( string $filename, string $fileType  ) {
-
+global proc SDSexport( string $filename, string $fileType  )
+{
 	string $meshes[] = SDScheckMeshSelection();
+	
 	if (!size($meshes))
 	{
 		return;
