@@ -1,0 +1,289 @@
+// SDS-3D-Model-Format
+// SDSImport.mel
+//
+// Copyright (c) 2013, 2014. Jake Haas. All Right Reserved, http://jakehaas.com/
+//
+// THIS CODE AND INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY 
+// KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
+// PARTICULAR PURPOSE.
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+//
+//   example:        SDSimportBrowser;
+//     or 
+//   example:        SDSimport "c:/filename.sds" "sds";
+//
+/////////////////////////////////////////////////////////////////////////////////////
+
+// Open dialog box to pick SDS file
+global proc SDSimportBrowser()
+{
+	fileBrowserDialog -m 0 -fc "SDSimport" -ft "SDS" -an "Import SDS" -om "Import";
+}
+
+// Import
+global proc SDSimport( string $filename, string $fileType  )
+{
+	string $s, $elems[];
+	
+	string $objectName = "SDSmesh";
+	int $numVertices, $numTriangles, $numNormals, $numUVs;
+	float $translation[], $rotation[], $scale[];
+	float $vtx[];
+	int $tri[];
+	float $norm[];
+	float $uv[];
+
+	int $fileId = `fopen $filename "r"`;
+
+	// Check file existence
+	if (!$fileId)
+	{
+		warning("*** ERROR. No file with name: " + $filename + " could  be found. Please check and try again.");
+		return;
+	}
+	
+	// Turn off undo queue
+	int $undoState = `undoInfo -q -st`;
+	if ($undoState == 1)
+	{
+		//undoInfo -st 0;
+	}
+	
+	// Disable transformations during loop to prevent messages
+	global string $gSelect;
+	setToolTo $gSelect;
+	
+	// Scan file	
+	while ( !`feof $fileId` )
+	{
+		$s = `fgetline $fileId`;
+
+		// Skip irrelevant syntax
+		if (size($s) < 6)
+		{
+			continue;
+		}
+		
+		// Get object name
+		if (`substring $s 1 11` == "StartObject")
+		{
+			tokenize $s "[]" $elems;
+			$objectName = $elems[1];
+			print ("\nReading data for object: " + $objectName);
+		}
+		// Get translation
+		else if (`substring $s 1 11` == "Translation")
+		{
+			tokenize $s "[]" $elems;
+			tokenize $elems[1] "," $elems;
+			
+			for ($elem in $elems)
+			{
+				$translation[size($translation)] = $elem;
+			}
+			
+			print ("\n Translation is [ " + $translation[0] + " " + $translation[1] + " " + $translation[2] + " ]");
+		}
+		// Get rotation
+		else if (`substring $s 1 8` == "Rotation")
+		{
+			tokenize $s "[]" $elems;
+			tokenize $elems[1] "," $elems;
+			
+			for ($elem in $elems)
+			{
+				$rotation[size($rotation)] = $elem;
+			}
+			
+			print ("\n Rotation is [ " + $rotation[0] + " " + $rotation[1] + " " + $rotation[2] + " ]");
+		}
+		// Get scale
+		else if (`substring $s 1 5` == "Scale")
+		{
+			tokenize $s "[]" $elems;
+			tokenize $elems[1] "," $elems;
+			
+			for ($elem in $elems)
+			{
+				$scale[size($scale)] = $elem;
+			}
+			
+			print ("\n Scale is [ " + $scale[0] + " " + $scale[1] + " " + $scale[2] + " ]");
+		}
+		// Get number of vertices
+		else if (`substring $s 1 11` == "numVertices")
+		{
+			tokenize $s "[]" $elems;
+			$numVertices = $elems[1];
+			print ("\n Looking for " + $numVertices + " vertices.");
+		}
+		// Get number of triangles
+		else if (`substring $s 1 12` == "numTriangles")
+		{
+			tokenize $s "[]" $elems;
+			$numTriangles = $elems[1];
+			print ("\n Looking for " + $numTriangles + " triangles.");
+		}
+		// Get number of normals
+		else if (`substring $s 1 10` == "numNormals")
+		{
+			tokenize $s "[]" $elems;
+			$numNormals = $elems[1];
+			print ("\n Looking for " + $numNormals + " normals.");
+		}
+		// Get number of UVs
+		else if (`substring $s 1 6` == "numUVs")
+		{
+			tokenize $s "[]" $elems;
+			$numUVs = $elems[1];
+			print ("\n Looking for " + $numUVs + " UVs.");
+		}
+		// Get vertex coordinates
+		else if (`substring $s 1 8` == "Vertices")
+		{
+			while ( `substring $s 1 1` != "}" )
+			{
+				$s = `fgetline $fileId`;
+				
+				if (`substring $s 1 1`!="}")
+				{
+					tokenize $s "[]" $elems;
+					tokenize $elems[1] "," $elems;
+					
+					for ($elem in $elems)
+					{
+						$vtx[size($vtx)] = $elem;
+					}
+				}
+			}
+			
+			print ("\n Found " + size($vtx) / 3 + "/" + $numVertices + " vertices.");
+		}
+		// Get triangle indices
+		else if (`substring $s 1 9` == "Triangles")
+		{
+			while ( `substring $s 1 1` != "}" )
+			{
+				$s = `fgetline $fileId`;
+				if (`substring $s 1 1` != "}")
+				{
+					tokenize $s "[]" $elems;
+					tokenize $elems[1] "," $elems;
+					
+					for ($elem in $elems)
+					{
+						$tri[size($tri)] = $elem;
+					}
+				}
+			}
+			print ("\n Found " + size($tri) / 3 + "/" + $numTriangles + " triangles.");
+		}
+		// Get normal data
+		else if (`substring $s 1 7`=="Normals")
+		{
+			while ( `substring $s 1 1` != "}" )
+			{
+				$s = `fgetline $fileId`;
+				if (`substring $s 1 1` != "}")
+				{
+					tokenize $s "[]" $elems;
+					tokenize $elems[1] "," $elems;
+					
+					for ($elem in $elems)
+					{
+						$norm[size($norm)] = $elem;
+					}
+				}
+			}
+			print ("\n Found " + size($norm) / 3 + "/" + $numNormals + " normals.");
+		}
+		// Get UV data
+		else if (`substring $s 1 3`=="UVs")
+		{
+			while ( `substring $s 1 1` != "}" )
+			{
+				$s = `fgetline $fileId`;
+				if (`substring $s 1 1` != "}")
+				{
+					tokenize $s "[]" $elems;
+					tokenize $elems[1] "," $elems;
+					
+					for ($elem in $elems)
+					{
+						$uv[size($uv)] = $elem;
+					}
+				}
+			}
+			print ("\n Found "+size($uv)/2+"/"+$numUVs+" UVs.");
+		}
+		// Create Object
+		else if (`substring $s 1 13`=="} [EndObject]")
+		{
+			// Create initial triangle
+			$elems = `polyCreateFacet	-p $vtx[$tri[0] * 3] $vtx[$tri[0] * 3 + 1] $vtx[$tri[0] * 3 + 2]
+										-p $vtx[$tri[1] * 3] $vtx[$tri[1] * 3 + 1] $vtx[$tri[1] * 3 + 2]
+										-p $vtx[$tri[2] * 3] $vtx[$tri[2] * 3 + 1] $vtx[$tri[2] * 3 + 2] -n $objectName -ch 0`;
+										
+			string $actualName = $elems[0];
+			select -r ($actualName+".vtx[0]");PolySelectConvert 4;		
+			polyEditUV -r 0 -u $uv[0] -v $uv[1];
+			select -r ($actualName+".vtx[1]");PolySelectConvert 4;		
+			polyEditUV -r 0 -u $uv[2] -v $uv[3];
+			select -r ($actualName+".vtx[2]");PolySelectConvert 4;		
+			polyEditUV -r 0 -u $uv[4] -v $uv[5];
+
+			// Append other triangles
+			for ($i = 3; $i <= size($tri); $i += 3)
+			{
+				polyAppendVertex	-ch 0
+									-p $vtx[$tri[$i] * 3] $vtx[$tri[$i] * 3 + 1] $vtx[$tri[$i] * 3 + 2]
+									-p $vtx[$tri[$i + 1] * 3] $vtx[$tri[$i + 1] * 3 + 1] $vtx[$tri[$i + 1] * 3 + 2]
+									-p $vtx[$tri[$i + 2] * 3] $vtx[$tri[$i + 2] * 3 + 1] $vtx[$tri[$i + 2] * 3 + 2];
+
+				// Edit normals and assign UVs
+				select -r ($actualName+".vtx[" + $i + "]");
+				polyNormalPerVertex -xyz $norm[$tri[$i] * 3] $norm[$tri[$i] * 3 + 1] $norm[$tri[$i] * 3 + 2];
+				PolySelectConvert 4;		
+				polyEditUV -r 0 -u $uv[$tri[$i] * 2] -v $uv[$tri[$i] * 2 + 1];
+
+				select -r ($actualName+".vtx[" + ($i + 1) + "]");
+				polyNormalPerVertex -xyz $norm[$tri[$i + 1] * 3] $norm[$tri[$i + 1] * 3 + 1] $norm[$tri[$i + 1] * 3 + 2];
+				PolySelectConvert 4;	
+				polyEditUV -r 0 -u $uv[$tri[$i + 1]*2] -v $uv[$tri[$i + 1] * 2 + 1];
+
+				select -r ($actualName+".vtx[" + ($i + 2) + "]");
+				polyNormalPerVertex -xyz $norm[$tri[$i + 2] * 3] $norm[$tri[$i + 2] * 3 + 1] $norm[$tri[$i + 2] * 3 + 2];
+				PolySelectConvert 4;
+				polyEditUV -r 0 -u $uv[$tri[$i + 2] * 2] -v $uv[$tri[$i + 2] * 2 + 1];
+			}
+			
+			// Assign transformation
+			setAttr ($actualName+".translate") -type double3 $translation[0] $translation[1] $translation[2];
+			setAttr ($actualName+".rotate") -type double3 $rotation[0] $rotation[1] $rotation[2];
+			setAttr ($actualName+".scale") -type double3 $scale[0] $scale[1] $scale[2];
+			
+			// Clear data
+			clear $translation;
+			clear $rotation;
+			clear $scale;
+			clear $vtx;
+			clear $tri;
+			clear $norm;
+			clear $uv;
+			select -clear;
+		}
+	}
+	
+	// Reset undo mode to previous state
+	undoInfo -st $undoState;
+
+	// Close file
+	fclose $fileId;
+
+	// Output to console
+	print ("\nImport of "+$filename+" is complete\n");
+}
+

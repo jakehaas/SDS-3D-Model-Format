@@ -1,0 +1,206 @@
+// SDS-3D-Model-Format
+// SDSExport.mel
+//
+// Copyright (c) 2013, 2014. Jake Haas. All Right Reserved, http://jakehaas.com/
+//
+// THIS CODE AND INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY 
+// KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
+// PARTICULAR PURPOSE.
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+//
+//   example:        SDSexportBrowser;
+//     or 
+//   example:        SDSexport "c:/filename.sds" "sds";
+//
+/////////////////////////////////////////////////////////////////////////////////////
+
+// Open dialog box to pick SDS file
+global proc SDSexportBrowser() {
+
+	if (!size(SDScheckMeshSelection()))
+	{
+		return;
+	}
+
+	fileBrowserDialog -m 1 -fc "SDSexport" -ds 1 -an "Export SDS" -om "ExportActive";
+}
+
+// Export
+global proc SDSexport( string $filename, string $fileType  ) {
+
+	string $meshes[] = SDScheckMeshSelection();
+	if (!size($meshes))
+	{
+		return;
+	}
+
+	// Disable transformations during loop to prevent errors
+	global string $gSelect;
+	setToolTo $gSelect;
+
+	// SDS Data
+	int $data[];
+	float $tmp[];
+	string $elems[];
+	int $numTriangles;
+	
+	$filename = ($filename+".sds");
+
+	// Open file for writing
+	int $fileId = `fopen $filename "w"`;
+
+	// Write file header
+	fprint $fileId "// SDS format by Jake Haas\n";
+	fprint $fileId ("// Exported with Maya " + getApplicationVersionAsFloat() + "\n\n");
+
+	
+	// Iterate through meshes
+	for ($mesh in $meshes)
+	{
+		print ("\nExporting mesh " + $mesh);
+	
+		// Start by temporarily triangulating the mesh
+		string $polyTriangulateNode[] = `polyTriangulate -ch 1 $mesh`;
+
+		// Write object name and global data
+		fprint $fileId ("StartObject [" + $mesh + "] {\n\n");
+
+		float $pos[] = `getAttr ($mesh+".translate")`;
+		float $rot[] = `getAttr ($mesh+".rotate")`;
+		float $scl[] = `getAttr ($mesh+".scale")`;
+		
+		fprint $fileId ("Translation [" + $pos[0] + "," + $pos[1] + "," + $pos[2] + "]\n");
+		fprint $fileId ("Rotation [" + $rot[0] + "," + $rot[1] + "," + $rot[2] + "]\n");
+		fprint $fileId ("Scale [" + $scl[0] + "," + $scl[1] + "," + $scl[2] + "]\n\n");
+
+		$data = `polyEvaluate -t $meshes[0]`;			$numTriangles = $data[0];
+
+		fprint $fileId ("numVertices [" + $numTriangles * 3 + "]\n");
+		fprint $fileId ("numTriangles [" + $numTriangles + "]\n");
+		fprint $fileId ("numNormals [" + $numTriangles * 3 + "]\n");
+		fprint $fileId ("numUVs [" + $numTriangles * 3 + "]\n\n");
+
+		float $vtx[];
+		int $tri[];
+		float $norm[];
+		float $uv[];
+		
+		// Get  vertex positions, triangle indices, normals and UVs by iterating through triangles
+		for ($i = 0; $i < $numTriangles; $i++)
+		{
+			// Parse and store vertex indices
+			select ($mesh + ".f[" + $i + "]");
+			$elems = `polyInfo -faceToVertex`;
+			tokenize $elems[0] ":" $elems;
+			tokenize $elems[1] " " $elems;
+			
+			$tri[size($tri)] = $i * 3;
+			$tri[size($tri)] = $i * 3 + 1;
+			$tri[size($tri)] = $i * 3 + 2;
+			
+			// Store vertex positions, normals and UVs
+			for ($j = 0; $j < 3; $j++)
+			{
+				$tmp = `xform -q -os -t ($mesh + ".vtx[" + $elems[$j] + "]")`;
+				$vtx[size($vtx)] = $tmp[0];
+				$vtx[size($vtx)] = $tmp[1];
+				$vtx[size($vtx)] = $tmp[2];
+
+				$tmp = `polyNormalPerVertex -q -xyz ($mesh + ".vtxFace[" + $elems[$j] + "][" + $i + "]")`;
+				$norm[size($norm)] = $tmp[0];
+				$norm[size($norm)] = $tmp[1];
+				$norm[size($norm)] = $tmp[2];
+
+				select -r ($mesh + ".vtxFace[" + $elems[$j] + "][" + $i + "]");
+				PolySelectConvert 4;
+				$tmp = `polyEditUV -q`;
+				$uv[size($uv)] = $tmp[0];
+				$uv[size($uv)] = $tmp[1];
+			}
+		}
+		
+		// Write vertex positions
+		fprint $fileId ("Vertices {\n");
+		
+		for ($i = 0; $i < $numTriangles * 3; $i++)
+		{
+			fprint $fileId ($i + " [" + $vtx[$i * 3] + "," + $vtx[$i * 3 + 1] + "," + $vtx[$i * 3 + 2]+"]\n");
+		}
+			
+		fprint $fileId ("}\n\n");
+		
+		
+		// Write triangle indices
+		fprint $fileId ("Triangles {\n");
+		
+		for ($i = 0; $i < $numTriangles; $i++)
+		{
+			fprint $fileId ($i + " [" + $tri[$i * 3] + "," + $tri[$i * 3 + 1] + "," + $tri[$i * 3 + 2] + "]\n");
+		}
+		
+		fprint $fileId ("}\n\n");
+
+		// Write normals
+		fprint $fileId ("Normals {\n");
+		
+		for ($i = 0; $i < $numTriangles * 3; $i++)
+		{
+			fprint $fileId ($i + " [" + $norm[$i * 3] + "," + $norm[$i * 3 + 1] + "," + $norm[$i * 3 + 2] + "]\n");
+		}
+			
+		fprint $fileId ("}\n\n");
+		
+		
+		// Write UVs
+		fprint $fileId ("UVs {\n");
+		
+		for ($i = 0; $i < $numTriangles * 3; $i++)
+		{
+			fprint $fileId ($i + " [" + $uv[$i * 2] + "," + $uv[$i * 2 + 1] + "]\n");
+		}
+			
+		fprint $fileId ("}\n\n");
+
+		// End the object
+		fprint $fileId ("} [EndObject]\n\n");
+
+		// Reset storage
+		clear $vtx;
+		clear $tri;
+		clear $norm;
+		clear $uv;
+		delete $polyTriangulateNode[0];
+	}
+
+	// Close SDS file and clear selection
+	fclose $fileId;
+	select -cl;
+
+	print ("\nSDS export complete.");
+
+}
+
+// Utility procedure to get all meshes in scene if none were already selected
+global proc string[] SDScheckMeshSelection()
+{
+	string $meshes[] = `filterExpand -sm 12`;
+
+	// If none were selected
+	if (!size($meshes))
+	{
+		// Get all meshes in the scene
+		select -all;
+		$meshes = `filterExpand -sm 12`;
+		
+		// If no mesh exists in the scene, throw error
+		if (!size($meshes))
+		{
+			warning("No mesh was found in selection. Please select at least one mesh and try again.");
+		}
+	}
+	
+	return $meshes;
+}
